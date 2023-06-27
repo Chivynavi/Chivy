@@ -1,0 +1,84 @@
+#Loading all the libraries 
+library(caret)
+library(ggplot2)
+library(rattle)
+library(corrplot)
+
+#Loading all the data
+pmltrain <- read.csv("pml-training.csv")
+pmltest <- read.csv("pml-testing.csv")
+set.seed(9)
+dim(pmltrain)
+dim(pmltest)
+
+#Cleaning the Data
+##Removing N/A variables
+pmltrain <- pmltrain[, sapply(pmltrain, function(col) sum(is.na(col))/length(col) < 0.9)]
+pmltrain <- pmltrain[,-c(1:7)] 
+
+##Removing near zero variance variables
+nzvv <- nearZeroVar(pmltrain)
+pmltrain <- pmltrain[,-nzvv]
+dim(pmltrain)
+
+# Calculate the correlation matrix
+cor_matrix <- cor(pmltrain[, -ncol(pmltrain)])
+
+# Create a correlation plot
+corrplot(cor_matrix, method = "color", type = "upper", order = "hclust", tl.cex = 0.8)
+corrplot(cor_matrix, method = "color", type = "lower", order = "hclust", tl.cex = 0.8)
+
+##split the training set into a training and testing set. 
+inTrain <- createDataPartition(y=pmltrain$classe, p=0.70, list=F)
+training <- pmltrain[inTrain,]
+testing <- pmltrain[-inTrain,]
+
+#Creating and Testing the Models
+control <- trainControl(method="cv", number=3,verboseIter=F)
+
+#MODELS
+##1. Recursive Partitioning and Regression Trees
+fit.tree <- train(classe~., data=training, method="rpart", trControl = control)
+par(mar = c(1, 1, 1, 1)) 
+options(repr.plot.width = 10, repr.plot.height = 8)
+fancyRpartPlot(fit.tree$finalModel, cex = 0.6)
+#Plotting the model
+plot(fit.tree)
+#Prediction
+predict.tree <- predict(fit.tree, testing)
+CMtree <- confusionMatrix(predict.tree, factor(testing$classe))
+CMtree
+
+##2.	Stochastic gradient boosting trees 
+fit.gbm <- train(classe~., data=training, method="gbm", trControl = control)
+#Plotting the model
+plot(fit.gbm)
+#Prediction
+predict.gbm <- predict(fit.gbm, testing)
+CMgbm <- confusionMatrix(predict.gbm, factor(testing$classe))
+CMgbm
+
+##3. Random Forest
+fit.rf <- train(classe~., data=training, method="rf", trControl = control)
+#Plotting the model
+plot(fit.rf)
+#Prediction
+predict.rf <- predict(fit.rf, testing)
+CMrf <- confusionMatrix(predict.rf, factor(testing$classe))
+CMrf
+
+# Summarize the results for each model
+modelnames <- c("Decision Tree", "Gradient Boosting", "Random Forest")
+confusion_matrices <- list(CMtree, CMgbm, CMrf)
+
+# Display confusion matrices and accuracy for each model
+for (i in seq_along(model_names)) {
+  cat("Model:", model_names[i], "\n")
+   cat("Accuracy:", confusion_matrices[[i]]$overall["Accuracy"], "\n")
+  cat("Out of Sample error:", 1-confusion_matrices[[i]]$overall["Accuracy"], "\n")
+  cat("\n")
+}
+
+#Predictions on Test Set
+prediction <- predict(fit.rf, pmltest)
+print(prediction)
